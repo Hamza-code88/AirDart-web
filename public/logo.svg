@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 260" width="100%" height="100%">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@800&amp;display=swap');
+      .logo-text {
+        font-family: 'Plus Jakarta Sans', 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-weight: 800;
+        font-size: 138px;
+        fill: #3B2A2A;
+        letter-spacing: -3px;
+      }
+    </style>
+  </defs>
+
+  <!-- 45-Degree Rotated Paper-Dart "A" Icon -->
+  <g transform="translate(145, 130) rotate(42) translate(-115, -115)">
+    <!-- Outer Dart Body with Inner A-Cutout -->
+    <path d="M 115 12
+             C 118 12 121 15 123 19
+             L 190 178
+             L 158 164
+             L 144 196
+             L 126 136
+             L 104 136
+             L 86 196
+             L 72 164
+             L 40 178
+             C 38 174 39 169 42 164
+             L 107 19
+             C 109 15 112 12 115 12 Z
+             M 115 48
+             L 138 112
+             L 92 112 Z"
+          fill="#FF6363"
+          fill-rule="evenodd" />
+  </g>
+
+  <!-- "irDart" Wordmark -->
+  <text x="250" y="172" class="logo-text">irDart</text>
+</svg>
