@@ -1,12 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Wifi,
   Lock,
   QrCode,
   Plus,
   Bell,
+  Smartphone,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -15,20 +17,59 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onShowQr, onPairNew }) => {
+  const [heartbeatData, setHeartbeatData] = useState<{
+    isConnected: boolean;
+    peer: { name: string; ip: string; model?: string } | null;
+    pcIp: string;
+  }>({
+    isConnected: false,
+    peer: null,
+    pcIp: '192.168.1.9',
+  });
+
+  useEffect(() => {
+    const fetchHeartbeat = async () => {
+      try {
+        const res = await fetch('/api/p2p/heartbeat');
+        if (res.ok) {
+          const data = await res.json();
+          setHeartbeatData({
+            isConnected: !!data.isConnected,
+            peer: data.peer,
+            pcIp: data.pcIp || '192.168.1.9',
+          });
+        }
+      } catch {}
+    };
+
+    fetchHeartbeat();
+    const interval = setInterval(fetchHeartbeat, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <header className="w-full flex items-center justify-between pb-6 select-none">
-      {/* Network Status Tags */}
+      {/* Network & Live Zapya Connection Status Tags */}
       <div className="flex items-center gap-2.5 flex-wrap">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FFFFFF]/80 backdrop-blur-sm border border-[#FFD1D1]/60 shadow-sm text-xs font-semibold text-[#3B2A2A]">
-          <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
-          <span>Studio Net (5GHz)</span>
-          <span className="text-[#7A6363] font-medium">• 192.168.1.42</span>
-        </div>
+        {heartbeatData.isConnected && heartbeatData.peer ? (
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#E8F8F0] border border-[#10B981]/50 shadow-sm text-xs font-bold text-[#065F46] animate-in fade-in">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-ping" />
+            <Smartphone size={14} className="text-[#10B981]" />
+            <span>Zapya Mesh Connected: <strong>{heartbeatData.peer.name}</strong></span>
+            <span className="text-[#047857]/70 font-mono text-[11px]">({heartbeatData.peer.ip})</span>
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FFFFFF]/80 backdrop-blur-sm border border-[#FFD1D1]/60 shadow-sm text-xs font-semibold text-[#3B2A2A]">
+            <span className="w-2 h-2 rounded-full bg-[#FF9494] animate-pulse"></span>
+            <span>Local Wi-Fi Mesh ({heartbeatData.pcIp})</span>
+            <span className="text-[#7A6363] font-medium">• Waiting for Phone</span>
+          </div>
+        )}
 
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FFE3E1] border border-[#FFD1D1]/60 shadow-sm text-xs font-semibold text-[#3B2A2A]">
           <Lock size={13} color="#3B2A2A" strokeWidth={2.4} />
-          <span>Direct WebRTC</span>
-          <span className="text-[#7A6363] font-medium">• 0 Cloud • No Internet Used</span>
+          <span>Direct P2P LAN</span>
+          <span className="text-[#7A6363] font-medium">• 100% Offline • Zero Internet</span>
         </div>
       </div>
 

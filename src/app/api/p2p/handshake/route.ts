@@ -103,11 +103,31 @@ export async function POST(request: Request) {
       pairedAt: Date.now(),
     };
 
+    (globalThis as any).airdartActiveClient = {
+      id: 'peer-phone',
+      name: phoneName,
+      model: deviceType,
+      ip: phoneIp,
+      deviceType: 'phone',
+      lastSeen: Date.now(),
+      status: 'connected',
+    };
+
+    let pcPort = 3000;
+    try {
+      const host = request.headers.get('host') || '';
+      if (host.includes(':')) {
+        const p = parseInt(host.split(':')[1]);
+        if (!isNaN(p)) pcPort = p;
+      }
+    } catch {}
+
     return NextResponse.json({
       success: true,
       message: 'Handshake completed successfully!',
       status: 'paired',
-      pcName: session.pcName,
+      pcName: 'Windows PC (AirDart Web)',
+      pcPort,
       phone: session.phone,
     });
   } catch (error) {

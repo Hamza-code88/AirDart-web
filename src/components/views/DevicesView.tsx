@@ -19,7 +19,10 @@ import {
   Clipboard,
   QrCode,
   Image as ImageIcon,
+  Zap,
+  Hand,
 } from 'lucide-react';
+import { AirGrabPreviewModal } from '../modals/AirGrabPreviewModal';
 
 interface DevicesViewProps {
   onSelectPeer: (peerName: string) => void;
@@ -28,8 +31,16 @@ interface DevicesViewProps {
 
 export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const airGrabInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [airGrabModalOpen, setAirGrabModalOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{
+    name: string;
+    size: number;
+    type: string;
+    dataUrl: string;
+  } | null>(null);
   const [isTransferPaused, setIsTransferPaused] = useState(false);
   const [incomingStatus, setIncomingStatus] = useState<'pending' | 'accepted' | 'declined'>('pending');
   const [receivedFiles, setReceivedFiles] = useState<any[]>([]);
@@ -130,25 +141,76 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
     setToastFile(null);
   };
 
-  const connectedPhoneName = receivedFiles.length > 0 ? receivedFiles[0].senderName : 'AirDart Mobile Phone';
+  const [activePeer, setActivePeer] = useState<{
+    id: string;
+    name: string;
+    ip: string;
+    model?: string;
+  } | null>(null);
+
+  // Poll heartbeat to know in real-time when the mobile phone connects or disconnects
+  useEffect(() => {
+    const fetchPeerStatus = async () => {
+      try {
+        const res = await fetch('/api/p2p/heartbeat');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.pcIp || data.pcPort) {
+            setServerInfo({
+              ip: data.pcIp || '192.168.1.8',
+              port:
+                data.pcPort ||
+                (typeof window !== 'undefined' && window.location.port
+                  ? parseInt(window.location.port)
+                  : 3000),
+            });
+          }
+          if (data.isConnected && data.peer) {
+            setActivePeer(data.peer);
+          } else {
+            setActivePeer(null);
+          }
+        }
+      } catch {}
+    };
+
+    fetchPeerStatus();
+    const interval = setInterval(fetchPeerStatus, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const connectedPhoneName = activePeer
+    ? activePeer.name
+    : (receivedFiles.length > 0 ? receivedFiles[0].senderName : 'AirDart Mobile Phone');
+
   const nearbyDevices = [
     {
       id: 'dev-mobile',
       name: connectedPhoneName,
-      meta: 'Local Wi-Fi P2P • Direct Transfer',
-      badge: receivedFiles.length > 0 ? 'Connected' : 'Ready',
+      meta: activePeer ? `IP: ${activePeer.ip} • Live P2P Mesh Active` : 'Local Wi-Fi P2P • Direct Transfer',
+      badge: activePeer ? '🟢 Live Connected' : (receivedFiles.length > 0 ? 'Recently Synced' : 'Ready to Pair'),
       icon: Smartphone,
+      isOnline: !!activePeer,
     },
   ];
 
   const [activeOutgoing, setActiveOutgoing] = useState<{
+    id?: string;
     name: string;
     size: number;
     sizeFormatted: string;
-    progress: number;
-    status: 'uploading' | 'ready' | 'accepted';
+    progress: number;        // 0-100: reading/encoding on PC side
+    mobileProgress: number;  // 0-100: mobile download progress
+    status: 'reading' | 'ready' | 'downloading' | 'accepted' | 'declined';
     targetDevice: string;
   } | null>(null);
+
+  const outboxPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [serverInfo, setServerInfo] = useState<{ ip: string; port: number }>({
+    ip: '192.168.1.8',
+    port: typeof window !== 'undefined' && window.location.port ? parseInt(window.location.port) : 3000,
+  });
 
   const queueFileForMobile = async (file: File) => {
     // Sanitize Windows JFIF / JFLF extensions to clean .jpg
@@ -162,43 +224,130 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
       name: safeName,
       size: file.size,
       sizeFormatted: formatted,
-      progress: 35,
-      status: 'uploading',
-      targetDevice: "My Phone (AirDart Mobile)",
+      progress: 5,
+      mobileProgress: 0,
+      status: 'reading',
+      targetDevice: activePeer ? activePeer.name : 'My Phone (AirDart Mobile)',
     });
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = reader.result as string;
-      try {
-        const res = await fetch('/api/p2p/outbox', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: safeName,
-            size: file.size,
-            type: file.type || 'application/octet-stream',
-            dataUrl,
-            targetDevice: "My Phone (AirDart Mobile)",
-          }),
-        });
-        if (res.ok) {
-          setActiveOutgoing((prev) =>
-            prev ? { ...prev, progress: 100, status: 'ready' } : null
-          );
-        }
-      } catch (err) {
-        console.error('Outbox upload failed:', err);
+    const formData = new FormData();
+    formData.append('file', file, safeName);
+    formData.append('name', safeName);
+    formData.append('targetDevice', activePeer ? activePeer.name : 'My Phone (AirDart Mobile)');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/p2p/outbox');
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        setActiveOutgoing((prev) => (prev ? { ...prev, progress: pct } : null));
       }
     };
-    reader.readAsDataURL(file);
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          const outboxId = data.file?.id;
+          setActiveOutgoing((prev) =>
+            prev ? { ...prev, id: outboxId, progress: 100, status: 'ready', mobileProgress: 0 } : null
+          );
+
+          // Poll outbox for mobile download progress
+          if (outboxPollRef.current) clearInterval(outboxPollRef.current);
+          outboxPollRef.current = setInterval(async () => {
+            try {
+              const pollRes = await fetch('/api/p2p/outbox');
+              if (pollRes.ok) {
+                const pollData = await pollRes.json();
+                const allFiles = [...(pollData.files || []), ...(pollData.allFiles || [])];
+                const match = allFiles.find((f: any) => f.id === outboxId);
+                if (match) {
+                  const mob = match.mobileProgress ?? 0;
+                  const st = match.status;
+                  setActiveOutgoing((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          mobileProgress: mob,
+                          status:
+                            st === 'accepted'
+                              ? 'accepted'
+                              : st === 'declined'
+                              ? 'declined'
+                              : mob > 0
+                              ? 'downloading'
+                              : 'ready',
+                        }
+                      : null
+                  );
+                  if (st === 'accepted' || st === 'declined') {
+                    if (outboxPollRef.current) clearInterval(outboxPollRef.current);
+                    setTimeout(() => setActiveOutgoing(null), 4000);
+                  }
+                }
+              }
+            } catch {
+              /* ignore */
+            }
+          }, 800);
+        } catch (e) {
+          console.error('Failed to parse outbox response:', e);
+        }
+      } else {
+        console.error('Outbox upload error HTTP:', xhr.status, xhr.responseText);
+        setActiveOutgoing(null);
+        alert(`Could not queue file for transfer (HTTP ${xhr.status}).`);
+      }
+    };
+
+    xhr.onerror = () => {
+      console.error('Network error during outbox upload');
+      setActiveOutgoing(null);
+      alert('Network error while queuing file for mobile transfer.');
+    };
+
+    xhr.send(formData);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
       setSelectedFiles([file.name]);
-      queueFileForMobile(file);
+
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setPreviewImage({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            dataUrl: reader.result as string,
+          });
+          setAirGrabModalOpen(true);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        queueFileForMobile(file);
+      }
+    }
+  };
+
+  const handleAirGrabSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        setPreviewImage({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          dataUrl: reader.result as string,
+        });
+        setAirGrabModalOpen(true);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -208,7 +357,22 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       setSelectedFiles([file.name]);
-      queueFileForMobile(file);
+
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setPreviewImage({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            dataUrl: reader.result as string,
+          });
+          setAirGrabModalOpen(true);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        queueFileForMobile(file);
+      }
     }
   };
 
@@ -260,6 +424,84 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
         className="hidden"
         onChange={handleFileChange}
       />
+
+      {/* Zapya Style Live Mesh Connection Banner */}
+      <section
+        className={`w-full rounded-3xl p-5 transition-all border flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm ${
+          activePeer
+            ? 'bg-[#E8F8F0] border-[#10B981]/50 text-[#065F46]'
+            : 'bg-[#FFFFFF]/80 backdrop-blur-sm border-[#FFD1D1]/70 text-[#3B2A2A]'
+        }`}
+      >
+        <div className="flex items-center gap-4">
+          <div
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-all ${
+              activePeer
+                ? 'bg-[#10B981] text-white shadow-lg shadow-[#10B981]/30 ring-4 ring-[#10B981]/20'
+                : 'bg-[#FFE3E1] text-[#994345]'
+            }`}
+          >
+            <Smartphone size={24} strokeWidth={2.2} />
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  activePeer ? 'bg-[#10B981] animate-ping' : 'bg-[#FF9494] animate-pulse'
+                }`}
+              />
+              <span className="text-xs font-extrabold uppercase tracking-wider">
+                {activePeer ? 'Zapya Mesh Connected & Live' : 'P2P Mesh Standby'}
+              </span>
+              <span
+                className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                  activePeer ? 'bg-[#10B981]/15 text-[#065F46]' : 'bg-[#FFE3E1] text-[#994345]'
+                }`}
+              >
+                {activePeer ? '5GHz Direct LAN' : 'Scan to Connect'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 mt-0.5">
+              <h3 className="text-base font-extrabold tracking-tight">
+                {activePeer ? `${activePeer.name} Connected` : 'Waiting for Mobile Phone to Connect'}
+              </h3>
+              {activePeer && (
+                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#10B981] text-white font-bold tracking-wide shadow-sm">
+                  PORT: {serverInfo.port}
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs opacity-75 font-mono mt-0.5">
+              {activePeer
+                ? `Phone IP: ${activePeer.ip} • Connected on Port: ${serverInfo.port} • Local Station: http://${serverInfo.ip}:${serverInfo.port}`
+                : `Open AirDart app on your phone • Local Station: http://${serverInfo.ip}:${serverInfo.port}`}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 shrink-0">
+          {activePeer ? (
+            <button
+              onClick={() => onSelectPeer(activePeer.name)}
+              className="h-10 px-5 rounded-full bg-[#10B981] hover:bg-[#0ea371] text-white text-xs font-bold transition-all shadow-md shadow-[#10B981]/30 flex items-center gap-2 cursor-pointer active:scale-[0.98]"
+            >
+              <Send size={14} className="-rotate-12" />
+              <span>Beam to Phone</span>
+            </button>
+          ) : (
+            <button
+              onClick={onOpenQr}
+              className="h-10 px-5 rounded-full bg-[#FF9494] hover:bg-[#ff8585] text-[#3B2A2A] text-xs font-bold transition-all shadow-md shadow-[#FF9494]/30 flex items-center gap-2 cursor-pointer active:scale-[0.98]"
+            >
+              <QrCode size={15} />
+              <span>Pair Device (QR)</span>
+            </button>
+          )}
+        </div>
+      </section>
 
       {/* Hero Dropzone */}
       <section
@@ -378,55 +620,79 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
         <div className="bg-[#FFFFFF]/85 backdrop-blur-sm rounded-3xl p-5 border border-[#FFD1D1]/70 shadow-sm flex flex-col justify-between gap-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#FFE3E1] flex items-center justify-center text-[#3B2A2A]">
-                <Upload size={18} color="#3B2A2A" strokeWidth={2.4} />
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                activeOutgoing?.status === 'accepted' ? 'bg-[#10B981] text-white shadow-lg shadow-[#10B981]/30' : 'bg-[#FFE3E1] text-[#3B2A2A]'
+              }`}>
+                {activeOutgoing?.status === 'accepted'
+                  ? <Check size={18} strokeWidth={2.6} />
+                  : <Upload size={18} color={activeOutgoing?.status === 'accepted' ? 'white' : '#3B2A2A'} strokeWidth={2.4} />}
               </div>
               <div>
                 <h4 className="text-sm font-extrabold text-[#3B2A2A]">
-                  {activeOutgoing ? 'Beaming to Mobile' : 'Ready to Send to Phone'}
+                  {activeOutgoing?.status === 'accepted' ? '✅ Transfer Complete!'
+                  : activeOutgoing?.status === 'downloading' ? '📲 Mobile Downloading...'
+                  : activeOutgoing?.status === 'ready' ? '⏳ Waiting for Mobile to Accept'
+                  : activeOutgoing ? '🔄 Encoding & Uploading...'
+                  : 'Ready to Send to Phone'}
                 </h4>
                 <p className="text-xs text-[#7A6363]">
-                  {activeOutgoing ? `Target: ${activeOutgoing.targetDevice}` : 'Drop files above or click to beam'}
+                  {activeOutgoing ? `${activeOutgoing.name} • ${activeOutgoing.sizeFormatted}` : 'Drop files above or click to beam'}
                 </p>
               </div>
             </div>
-
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFE3E1] text-xs font-bold text-[#3B2A2A] shadow-sm">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFE3E1] text-xs font-bold text-[#3B2A2A] shadow-sm shrink-0">
               <Gauge size={14} color="#994345" strokeWidth={2.4} />
-              <span>{activeOutgoing ? '58.4 MB/s' : 'Standby'}</span>
+              <span>{activeOutgoing?.status === 'downloading' ? '58 MB/s' : activeOutgoing ? 'Active' : 'Standby'}</span>
             </div>
           </div>
 
-          {/* File Card in Transfer */}
-          <div className="bg-[#FFE3E1]/70 rounded-2xl p-4 flex flex-col gap-2.5 border border-[#FFD1D1]/60">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-[#3B2A2A] truncate max-w-[220px]">
-                  {activeOutgoing ? activeOutgoing.name : 'No outgoing file selected'}
-                </p>
-                <p className="text-[11px] text-[#7A6363] mt-0.5">
-                  {activeOutgoing
-                    ? `${activeOutgoing.sizeFormatted} • Streaming to phone`
-                    : 'Drop a file into the dropzone to beam to your phone'}
-                </p>
+          {/* Dual Progress Bars */}
+          <div className="bg-[#FFE3E1]/70 rounded-2xl p-4 flex flex-col gap-3.5 border border-[#FFD1D1]/60">
+            {/* Bar 1: PC Encoding */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Monitor size={11} color="#994345" strokeWidth={2.4} />
+                  <span className="text-[10px] font-bold text-[#7A6363] uppercase tracking-wider">PC → Server</span>
+                </div>
+                <span className="text-[10px] font-extrabold text-[#3B2A2A]">{activeOutgoing?.progress ?? 0}%</span>
               </div>
-              <div className="text-right">
-                <span className="text-sm font-extrabold text-[#3B2A2A]">
-                  {activeOutgoing ? `${activeOutgoing.progress}%` : '0%'}
-                </span>
-                <p className="text-[11px] text-[#7A6363]">
-                  {activeOutgoing ? (activeOutgoing.status === 'ready' ? 'Sent to phone' : 'Transferring') : 'Waiting'}
-                </p>
+              <div className="w-full h-2.5 rounded-full bg-[#FFFFFF] overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: `${activeOutgoing?.progress ?? 0}%`,
+                    background: 'linear-gradient(90deg, #FF9494, #ff6060)',
+                  }}
+                />
               </div>
             </div>
 
-            {/* Progress Bar */}
-            <div className="w-full h-2.5 rounded-full bg-[#FFFFFF] overflow-hidden p-0.5">
-              <div
-                className="h-full rounded-full bg-[#FF9494] transition-all duration-300"
-                style={{ width: `${activeOutgoing ? activeOutgoing.progress : 0}%` }}
-              ></div>
+            {/* Bar 2: Mobile Download */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Smartphone size={11} color="#059669" strokeWidth={2.4} />
+                  <span className="text-[10px] font-bold text-[#7A6363] uppercase tracking-wider">Mobile Download</span>
+                </div>
+                <span className="text-[10px] font-extrabold text-[#10B981]">{activeOutgoing?.mobileProgress ?? 0}%</span>
+              </div>
+              <div className="w-full h-2.5 rounded-full bg-[#FFFFFF] overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${activeOutgoing?.status === 'downloading' ? 'animate-pulse' : ''}`}
+                  style={{
+                    width: `${activeOutgoing?.mobileProgress ?? 0}%`,
+                    background: 'linear-gradient(90deg, #34d399, #10B981)',
+                  }}
+                />
+              </div>
             </div>
+
+            {!activeOutgoing && (
+              <p className="text-[11px] text-[#7A6363] text-center">
+                Drop a file or click <strong>Choose File</strong> to beam instantly to your phone
+              </p>
+            )}
           </div>
 
           {/* Action Row */}
@@ -435,7 +701,6 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
               <span className="w-2 h-2 rounded-full bg-[#10B981]"></span>
               <span>Direct P2P LAN Channel</span>
             </div>
-
             <div className="flex items-center gap-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -447,6 +712,7 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
             </div>
           </div>
         </div>
+
 
         {/* Right: Incoming Request / Received File Card */}
         {(() => {

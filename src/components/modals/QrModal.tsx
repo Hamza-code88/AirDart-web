@@ -57,8 +57,16 @@ export const QrModal: React.FC<QrModalProps> = ({
   }, []);
 
   const cleanPin = pairingCode.replace(/\D/g, '');
-  const qrPayload = `http://${localIp}:3000/?airdart=pair&session=${sessionId}&pin=${cleanPin}`;
-  const displayUrl = sessionUrl || qrPayload;
+  const currentPort = typeof window !== 'undefined' && window.location.port ? window.location.port : '3000';
+  const qrPayload = JSON.stringify({
+    airdart: 'pair',
+    session: sessionId,
+    pin: cleanPin,
+    ip: localIp,
+    port: parseInt(currentPort),
+    deviceName: 'Windows PC (AirDart Web)',
+  });
+  const displayUrl = sessionUrl || `http://${localIp}:${currentPort}/?session=${sessionId}&pin=${cleanPin}`;
 
   // Poll local handshake endpoint while modal is visible and not yet paired
   useEffect(() => {

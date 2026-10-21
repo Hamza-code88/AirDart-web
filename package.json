@@ -2,8 +2,10 @@
   "name": "airdart-web",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
+    "desktop": "electron .",
     "sync:clipboard": "node scripts/clipboard-daemon.js",
     "build": "next build",
     "start": "next start",
@@ -20,6 +22,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^44.9.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",

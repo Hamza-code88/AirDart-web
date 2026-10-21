@@ -13,6 +13,8 @@ export interface OutboxFile {
   senderName: string;
   targetDevice: string;
   status: 'pending' | 'accepted' | 'declined';
+  mobileProgress?: number;   // 0-100: real upload progress from mobile side
+  pcProgress?: number;       // 0-100: read progress on PC side
   timestamp: number;
 }
 
@@ -26,7 +28,7 @@ if (!globalForOutbox.airdartOutbox) {
   globalForOutbox.airdartOutbox = outbox;
 }
 
-// GET /api/p2p/outbox - Fast lightweight metadata polling & dedicated on-demand content download
+// GET /api/p2p/outbox - Lightweight metadata polling + on-demand content fetch
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const fileId = searchParams.get('id');
@@ -46,7 +48,25 @@ export async function GET(request: Request) {
     });
   }
 
-  // Lightweight metadata list for fast sub-millisecond polling!
+  // Direct binary stream for large video / photo download without high base64 RAM usage
+  if (fileId && searchParams.get('download') === 'true') {
+    const file = outbox.find((f) => f.id === fileId);
+    if (!file) {
+      return new Response('File not found', { status: 404 });
+    }
+    const b64 = file.base64 || (file.dataUrl.includes('base64,') ? file.dataUrl.split('base64,')[1] : '');
+    const buffer = Buffer.from(b64, 'base64');
+    return new Response(buffer, {
+      status: 200,
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(file.name)}"`,
+        'Content-Length': buffer.length.toString(),
+      },
+    });
+  }
+
+  // Lightweight metadata list – includes progress for both sides
   const pendingFiles = outbox
     .filter((f) => f.status === 'pending')
     .map((f) => ({
@@ -57,7 +77,10 @@ export async function GET(request: Request) {
       senderName: f.senderName,
       targetDevice: f.targetDevice,
       status: f.status,
+      mobileProgress: f.mobileProgress ?? 0,
+      pcProgress: f.pcProgress ?? 0,
       timestamp: f.timestamp,
+      // Inline data only for small files (< 150KB) so large files don't bloat polling
       dataUrl: f.size < 150 * 1024 ? f.dataUrl : undefined,
     }));
 
@@ -72,6 +95,7 @@ export async function GET(request: Request) {
       senderName: f.senderName,
       targetDevice: f.targetDevice,
       status: f.status,
+      mobileProgress: f.mobileProgress ?? 0,
       timestamp: f.timestamp,
     })),
   });
@@ -125,7 +149,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Sanitize image extensions (convert Windows .jfif / .jflf to standard .jpg)
+    // Sanitize image extensions (Windows .jfif / .jflf → .jpg)
     name = (name || 'pc_file').replace(/\.(jfif|jflf)$/i, '.jpg');
     if ((type?.includes('jpeg') || type?.includes('jpg')) && !name.match(/\.(jpg|jpeg)$/i)) {
       name = `${name.replace(/\.[^.]+$/, '')}.jpg`;
@@ -141,11 +165,13 @@ export async function POST(request: Request) {
       senderName: 'AirDart PC Station',
       targetDevice,
       status: 'pending',
+      mobileProgress: 0,
+      pcProgress: 100, // PC already has the file ready
       timestamp: Date.now(),
     };
 
     outbox.unshift(newOutboxItem);
-    console.log(`[P2P Outbox] PC queued file "${newOutboxItem.name}" for mobile (${newOutboxItem.size} bytes)`);
+    console.log(`[P2P Outbox] PC queued "${newOutboxItem.name}" for mobile (${newOutboxItem.size} bytes)`);
 
     return NextResponse.json({
       success: true,
@@ -161,13 +187,17 @@ export async function POST(request: Request) {
   }
 }
 
-// PATCH /api/p2p/outbox - Mobile acknowledges receipt or acceptance of file
+// PATCH /api/p2p/outbox - Mobile or PC updates status + progress
 export async function PATCH(request: Request) {
   try {
-    const { id, status = 'accepted' } = await request.json();
+    const body = await request.json();
+    const { id, status, mobileProgress, pcProgress } = body;
+
     const item = outbox.find((f) => f.id === id);
     if (item) {
-      item.status = status;
+      if (status !== undefined) item.status = status;
+      if (typeof mobileProgress === 'number') item.mobileProgress = mobileProgress;
+      if (typeof pcProgress === 'number') item.pcProgress = pcProgress;
     }
     return NextResponse.json({ success: true, updated: item });
   } catch (error) {

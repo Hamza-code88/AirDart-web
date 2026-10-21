@@ -15,7 +15,16 @@
 - [x] Integrated all views in [page.tsx](file:///d:/react%20projs/cv%20projects/airdart-web/src/app/page.tsx) with interactive state switching.
 - [x] Verified zero TypeScript compilation errors (`npx tsc --noEmit` Exit Code 0).
 
+- [x] **P2P Outbox Streaming & Dual Real-Time Progress Bars:**
+  - Implemented `FormData` + `XMLHttpRequest` file queueing in `DevicesView.tsx` with upload progress.
+  - Implemented direct binary stream endpoint `GET /api/p2p/outbox?id=...&download=true` for video and large file downloads.
+  - Dual live progress bars: PC encoding bar (coral) + Mobile download bar (green) polling real `mobileProgress`.
+- [x] **Dynamic Port & IP Discovery:**
+  - `/api/p2p/heartbeat` & `/api/p2p/handshake` return `pcPort` from host headers.
+  - `QrModal.tsx` and `ZeroInstallPairingView.tsx` generate QR codes using active browser port.
+  - `DevicesView.tsx` displays active connected port (`PORT: 3000`) and station address `http://192.168.1.8:3000`.
+
 ## Remaining Roadmap Items
-- [ ] Connect offline local network socket/HTTP streaming server to bridge mobile app and browser client.
-- [ ] Connect live file chunking transfer engine.
+- [ ] Implement PC webcam gesture tracking (MediaPipe Hand Landmarks) for PC AirGrab gesture trigger.
+- [ ] Connect Electron desktop shell bindings for offline background sync.
 - [ ] (Awaiting user permission) Build production release when requested.
