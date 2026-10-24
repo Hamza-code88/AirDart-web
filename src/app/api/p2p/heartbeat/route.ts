@@ -52,11 +52,21 @@ function getPortFromRequest(request: Request): number {
   return 3000;
 }
 
+// Helper to keep connection alive when any P2P activity occurs (uploads, outbox, etc.)
+export function touchHeartbeat(ip?: string, name?: string) {
+  if (globalForHeartbeat.airdartActiveClient) {
+    globalForHeartbeat.airdartActiveClient.lastSeen = Date.now();
+    globalForHeartbeat.airdartActiveClient.status = 'connected';
+    if (ip) globalForHeartbeat.airdartActiveClient.ip = ip;
+    if (name) globalForHeartbeat.airdartActiveClient.name = name;
+  }
+}
+
 // GET /api/p2p/heartbeat - Used by PC Web UI to check if mobile phone is currently active
 export async function GET(request: Request) {
   const current = globalForHeartbeat.airdartActiveClient;
-  // If phone hasn't pinged within 7 seconds, mark as offline/disconnected
-  const isAlive = current && (Date.now() - current.lastSeen < 7000);
+  // If phone hasn't pinged within 30 seconds, mark as offline/disconnected (tolerant during large transfers)
+  const isAlive = current && (Date.now() - current.lastSeen < 30000);
   const realIp = getLocalIp();
   const pcPort = getPortFromRequest(request);
 

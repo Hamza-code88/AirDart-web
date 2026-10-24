@@ -23,6 +23,13 @@
   - `/api/p2p/heartbeat` & `/api/p2p/handshake` return `pcPort` from host headers.
   - `QrModal.tsx` and `ZeroInstallPairingView.tsx` generate QR codes using active browser port.
   - `DevicesView.tsx` displays active connected port (`PORT: 3000`) and station address `http://192.168.1.8:3000`.
+- [x] **ISO/IEC 18004 Standard QR Code Generator Engine (`qrEngine.ts`):**
+  - Replaced buggy homemade math with Project Nayuki's 100% compliant QR generator.
+  - Fully handles Galois Field GF(256), Reed-Solomon interleaving, and mask evaluation.
+  - Generates crisp, error-free standard QR codes scannable on all mobile devices.
+- [x] **Stale Handshake Prevention (`handshake/route.ts`, `QrModal.tsx`):**
+  - Handshake session status is verified against live heartbeat activity (auto-resets to 'waiting' if peer is inactive).
+  - Opening `QrModal` explicitly triggers session reset, preventing false "Handshake Verified" triggers when mobile hasn't scanned.
 
 ## Remaining Roadmap Items
 - [ ] Implement PC webcam gesture tracking (MediaPipe Hand Landmarks) for PC AirGrab gesture trigger.

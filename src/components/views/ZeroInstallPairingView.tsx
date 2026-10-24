@@ -49,7 +49,8 @@ export const ZeroInstallPairingView: React.FC = () => {
       });
   }, []);
 
-  const qrPayload = `http://${localIp}:3000/?airdart=pair&session=${sessionId}&pin=839412`;
+  const currentPort = typeof window !== 'undefined' && window.location.port ? window.location.port : '3000';
+  const qrPayload = `http://${localIp}:${currentPort}/?session=${sessionId}&pin=839412`;
 
   // Poll local handshake endpoint
   useEffect(() => {

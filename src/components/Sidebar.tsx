@@ -31,7 +31,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { key: 'devices' as WebNavTab, label: 'Devices', icon: Radio },
     { key: 'transfers' as WebNavTab, label: 'Transfers', icon: ArrowUpDown, badge: '2' },
     { key: 'clipboard' as WebNavTab, label: 'Clipboard', icon: Clipboard, hasDot: true },
-    { key: 'pairing' as WebNavTab, label: 'Zero-Install QR', icon: QrCode },
     { key: 'history' as WebNavTab, label: 'History', icon: History },
     { key: 'settings' as WebNavTab, label: 'Settings', icon: Settings },
   ];

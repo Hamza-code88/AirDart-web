@@ -110,6 +110,7 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
                 ? JSON.parse(localStorage.getItem('airdart_saved_ids') || '[]')
                 : [];
               if (!savedList.includes(latest.id)) {
+                handleDownloadFile(latest);
                 setToastFile(latest);
                 playNotificationSound();
               }
@@ -315,22 +316,8 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
       setSelectedFiles([file.name]);
-
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          setPreviewImage({
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            dataUrl: reader.result as string,
-          });
-          setAirGrabModalOpen(true);
-        };
-        reader.readAsDataURL(file);
-      } else {
-        queueFileForMobile(file);
-      }
+      // Always queue the file directly to outbox so mobile receives transfer notification immediately!
+      queueFileForMobile(file);
     }
   };
 
@@ -348,6 +335,7 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
         setAirGrabModalOpen(true);
       };
       reader.readAsDataURL(file);
+      queueFileForMobile(file);
     }
   };
 
@@ -357,22 +345,8 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       setSelectedFiles([file.name]);
-
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          setPreviewImage({
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            dataUrl: reader.result as string,
-          });
-          setAirGrabModalOpen(true);
-        };
-        reader.readAsDataURL(file);
-      } else {
-        queueFileForMobile(file);
-      }
+      // Always queue the dropped file directly to outbox
+      queueFileForMobile(file);
     }
   };
 
@@ -483,21 +457,13 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
-          {activePeer ? (
+          {activePeer && (
             <button
               onClick={() => onSelectPeer(activePeer.name)}
               className="h-10 px-5 rounded-full bg-[#10B981] hover:bg-[#0ea371] text-white text-xs font-bold transition-all shadow-md shadow-[#10B981]/30 flex items-center gap-2 cursor-pointer active:scale-[0.98]"
             >
               <Send size={14} className="-rotate-12" />
               <span>Beam to Phone</span>
-            </button>
-          ) : (
-            <button
-              onClick={onOpenQr}
-              className="h-10 px-5 rounded-full bg-[#FF9494] hover:bg-[#ff8585] text-[#3B2A2A] text-xs font-bold transition-all shadow-md shadow-[#FF9494]/30 flex items-center gap-2 cursor-pointer active:scale-[0.98]"
-            >
-              <QrCode size={15} />
-              <span>Pair Device (QR)</span>
             </button>
           )}
         </div>
@@ -876,24 +842,6 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
             <Send size={14} color="#3B2A2A" strokeWidth={2.4} className="-rotate-12" />
             <span>Beam PC Clipboard</span>
           </button>
-        </div>
-
-        {/* Instant Mobile Connect QR box (1 col) */}
-        <div
-          onClick={onOpenQr}
-          className="bg-[#FFFFFF]/80 backdrop-blur-sm rounded-3xl p-5 border border-[#FFD1D1]/60 shadow-sm hover:border-[#FF9494] transition-all cursor-pointer flex items-center justify-between gap-4 group"
-        >
-          <div>
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#994345]">
-              Instant Mobile Connect
-            </span>
-            <h4 className="text-sm font-extrabold text-[#3B2A2A] mt-0.5">Scan with Camera</h4>
-            <p className="text-xs text-[#7A6363] mt-0.5">Zero-install local browser link</p>
-          </div>
-
-          <div className="w-12 h-12 rounded-2xl bg-[#FFE3E1] group-hover:bg-[#FF9494] flex items-center justify-center text-[#3B2A2A] transition-all shrink-0">
-            <QrCode size={22} color="#3B2A2A" strokeWidth={2.4} />
-          </div>
         </div>
       </section>
     </div>

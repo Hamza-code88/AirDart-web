@@ -20,7 +20,7 @@ export const QrCodeView: React.FC<QrCodeViewProps> = ({
 }) => {
   const matrix = useMemo(() => {
     try {
-      return createQrMatrix(value, 'M', 4);
+      return createQrMatrix(value, 'M', 2);
     } catch (e) {
       console.warn('QR matrix generation error:', e);
       return [];

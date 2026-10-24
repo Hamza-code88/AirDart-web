@@ -30,6 +30,11 @@ if (!globalForOutbox.airdartOutbox) {
 
 // GET /api/p2p/outbox - Lightweight metadata polling + on-demand content fetch
 export async function GET(request: Request) {
+  const globalForHb = globalThis as any;
+  if (globalForHb.airdartActiveClient) {
+    globalForHb.airdartActiveClient.lastSeen = Date.now();
+  }
+
   const { searchParams } = new URL(request.url);
   const fileId = searchParams.get('id');
   const needContent = searchParams.get('content') === 'true';
@@ -55,8 +60,7 @@ export async function GET(request: Request) {
       return new Response('File not found', { status: 404 });
     }
     const b64 = file.base64 || (file.dataUrl.includes('base64,') ? file.dataUrl.split('base64,')[1] : '');
-    const buffer = Buffer.from(b64, 'base64');
-    return new Response(buffer, {
+    return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {
         'Content-Type': file.type || 'application/octet-stream',

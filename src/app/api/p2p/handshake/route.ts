@@ -25,39 +25,38 @@ if (!globalForSessions.airdartSessions) {
   globalForSessions.airdartSessions = sessions;
 }
 
-// Default session for instant pairing
-if (!sessions.has('DART-8492')) {
-  sessions.set('DART-8492', {
-    sessionId: 'DART-8492',
-    pin: '839412',
-    pcName: 'MacBook Pro',
-    status: 'waiting',
-    createdAt: Date.now(),
-  });
-}
-
-// GET /api/p2p/handshake?sessionId=DART-8492
+// GET /api/p2p/handshake?sessionId=DART-8492&reset=true
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId') || 'DART-8492';
+  const shouldReset = searchParams.get('reset') === 'true';
 
   let session = sessions.get(sessionId);
-  if (!session) {
+  if (!session || shouldReset) {
     session = {
       sessionId,
       pin: '839412',
-      pcName: 'MacBook Pro',
+      pcName: 'Windows PC (AirDart Web)',
       status: 'waiting',
       createdAt: Date.now(),
     };
     sessions.set(sessionId, session);
   }
 
+  // Cross-check with active client heartbeat: if no active client, cannot be paired!
+  const activeClient = (globalThis as any).airdartActiveClient;
+  if (session.status === 'paired') {
+    if (!activeClient || Date.now() - activeClient.lastSeen > 12000) {
+      session.status = 'waiting';
+      session.phone = undefined;
+    }
+  }
+
   return NextResponse.json({
     success: true,
     sessionId: session.sessionId,
     status: session.status,
-    phone: session.phone || null,
+    phone: session.status === 'paired' ? session.phone : null,
   });
 }
 
@@ -78,16 +77,19 @@ export async function POST(request: Request) {
     if (!session) {
       session = {
         sessionId,
-        pin: pin || '839412',
-        pcName: 'MacBook Pro',
+        pin: '839412',
+        pcName: 'Windows PC (AirDart Web)',
         status: 'waiting',
         createdAt: Date.now(),
       };
       sessions.set(sessionId, session);
     }
 
-    // Verify PIN if provided
-    if (pin && session.pin && pin !== session.pin) {
+    // Verify PIN if provided (ignore non-digit characters)
+    const cleanInputPin = pin ? String(pin).replace(/\D/g, '') : '';
+    const cleanSessionPin = session.pin ? String(session.pin).replace(/\D/g, '') : '839412';
+
+    if (cleanInputPin && cleanInputPin !== cleanSessionPin) {
       return NextResponse.json(
         { success: false, error: 'Invalid pairing PIN' },
         { status: 400 }
@@ -136,4 +138,18 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+// DELETE /api/p2p/handshake - Reset session status
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const sessionId = searchParams.get('sessionId') || 'DART-8492';
+
+  sessions.delete(sessionId);
+  (globalThis as any).airdartActiveClient = null;
+
+  return NextResponse.json({
+    success: true,
+    message: 'Session reset to waiting state',
+  });
 }

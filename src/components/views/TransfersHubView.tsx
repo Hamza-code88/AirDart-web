@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ArrowUpRight,
   ArrowDownLeft,
+  Download,
 } from 'lucide-react';
 
 export const TransfersHubView: React.FC = () => {
@@ -29,6 +30,25 @@ export const TransfersHubView: React.FC = () => {
   const [outboxFiles, setOutboxFiles] = useState<any[]>([]);
   const [syncedClipboard, setSyncedClipboard] = useState<any | null>(null);
 
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes || bytes <= 0) return '512 KB';
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const isFirstLoadRef = React.useRef(true);
+  const prevRecCountRef = React.useRef(0);
+
+  const downloadFile = (f: any) => {
+    if (!f || !f.dataUrl) return;
+    const a = document.createElement('a');
+    a.href = f.dataUrl;
+    a.download = f.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   useEffect(() => {
     const fetchTransfers = async () => {
       try {
@@ -39,7 +59,25 @@ export const TransfersHubView: React.FC = () => {
         ]);
         if (recRes.ok) {
           const recData = await recRes.json();
-          if (recData.files) setReceivedFiles(recData.files);
+          if (recData.files) {
+            setReceivedFiles(recData.files);
+            if (isFirstLoadRef.current) {
+              isFirstLoadRef.current = false;
+              prevRecCountRef.current = recData.files.length;
+            } else if (recData.files.length > prevRecCountRef.current) {
+              const newFile = recData.files[0];
+              const savedList = typeof window !== 'undefined'
+                ? JSON.parse(localStorage.getItem('airdart_saved_ids') || '[]')
+                : [];
+              if (!savedList.includes(newFile.id)) {
+                downloadFile(newFile);
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('airdart_saved_ids', JSON.stringify([...savedList, newFile.id]));
+                }
+              }
+              prevRecCountRef.current = recData.files.length;
+            }
+          }
         }
         if (outRes.ok) {
           const outData = await outRes.json();
@@ -57,12 +95,11 @@ export const TransfersHubView: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-
   const historyItems = [
     ...outboxFiles.map((f) => ({
       id: f.id,
       name: f.name,
-      size: `${(f.size / (1024 * 1024)).toFixed(1)} MB`,
+      size: formatFileSize(f.size),
       device: f.targetDevice || 'My Phone',
       direction: 'sent' as const,
       type: f.type?.startsWith('image') ? 'image' : 'doc',
@@ -71,7 +108,7 @@ export const TransfersHubView: React.FC = () => {
     ...receivedFiles.map((f) => ({
       id: f.id,
       name: f.name,
-      size: `${(f.size / (1024 * 1024)).toFixed(1)} MB`,
+      size: formatFileSize(f.size),
       device: f.senderName || 'My Phone',
       direction: 'received' as const,
       type: f.type?.startsWith('image') ? 'image' : 'doc',
@@ -139,18 +176,24 @@ export const TransfersHubView: React.FC = () => {
             </p>
           </div>
         ) : (
-          historyItems.slice(0, 3).map((item) => (
+          historyItems.slice(0, 10).map((item) => (
             <div
               key={item.id}
               className="bg-[#FFE3E1]/60 rounded-2xl p-4 flex flex-col gap-3 border border-[#FFD1D1]/60"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-[#FFFFFF] flex items-center justify-center text-[#3B2A2A] shrink-0">
-                    {item.type === 'image' ? (
-                      <ImageIcon size={20} color="#994345" strokeWidth={2.2} />
+                  <div className="w-12 h-12 rounded-xl bg-[#FFFFFF] flex items-center justify-center text-[#3B2A2A] shrink-0 overflow-hidden border border-[#FFD1D1]">
+                    {item.type === 'image' && item.dataUrl ? (
+                      <img
+                        src={item.dataUrl}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : item.type === 'image' ? (
+                      <ImageIcon size={22} color="#994345" strokeWidth={2.2} />
                     ) : (
-                      <FileCode size={20} color="#994345" strokeWidth={2.2} />
+                      <FileCode size={22} color="#994345" strokeWidth={2.2} />
                     )}
                   </div>
                   <div className="min-w-0">
@@ -174,12 +217,21 @@ export const TransfersHubView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
-                  <div className="text-right">
-                    <span className="text-xs font-extrabold text-[#10B981] px-2 py-0.5 rounded-full bg-[#FFFFFF]">
-                      Complete
-                    </span>
-                  </div>
+                <div className="flex items-center gap-2.5 shrink-0">
+                  {item.dataUrl && (
+                    <a
+                      href={item.dataUrl}
+                      download={item.name}
+                      className="px-3.5 py-1.5 rounded-xl bg-[#10B981] hover:bg-[#0ea371] active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                    >
+                      <Download size={13} strokeWidth={2.4} />
+                      <span>Save / Download</span>
+                    </a>
+                  )}
+
+                  <span className="text-xs font-extrabold text-[#10B981] px-2.5 py-1 rounded-full bg-[#FFFFFF] border border-[#10B981]/30">
+                    Complete
+                  </span>
                 </div>
               </div>
 

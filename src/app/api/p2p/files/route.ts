@@ -60,7 +60,6 @@ export async function POST(request: Request) {
     if (contentType.includes('application/json')) {
       const body = await request.json();
       name = body.name || 'received_file';
-      size = body.size || 0;
       type = body.type || 'application/octet-stream';
       senderName = body.senderName || 'Mobile Phone';
       senderIp = body.senderIp || '192.168.1.105';
@@ -71,6 +70,11 @@ export async function POST(request: Request) {
       } else if (body.base64) {
         dataUrl = `data:${type};base64,${body.base64}`;
       }
+
+      // Accurately calculate byte size from base64 if size is missing or 0
+      const b64Part = dataUrl.includes('base64,') ? dataUrl.split('base64,')[1] : (body.base64 || '');
+      const calcBytes = b64Part ? Math.round((b64Part.length * 3) / 4) : 0;
+      size = body.size && body.size > 0 ? body.size : calcBytes;
     } else {
       const formData = await request.formData();
       const file = formData.get('file') as File | null;
@@ -85,13 +89,21 @@ export async function POST(request: Request) {
         );
       }
 
-      name = file.name || 'received_file';
-      size = file.size;
+      const paramName = (formData.get('fileName') as string) || (formData.get('name') as string);
+      name = paramName || file.name || 'received_file';
       type = file.type || 'application/octet-stream';
 
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
+      size = file.size && file.size > 0 ? file.size : buffer.length;
       dataUrl = `data:${type};base64,${buffer.toString('base64')}`;
+    }
+
+    // Touch heartbeat to guarantee connection remains alive during transfers
+    const globalForHb = globalThis as any;
+    if (globalForHb.airdartActiveClient) {
+      globalForHb.airdartActiveClient.lastSeen = Date.now();
+      globalForHb.airdartActiveClient.status = 'connected';
     }
 
     if (!dataUrl) {
