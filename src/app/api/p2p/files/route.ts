@@ -31,6 +31,24 @@ if (!globalForFiles.airdartUploadProgress) globalForFiles.airdartUploadProgress 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('session');
+  const fileId = searchParams.get('id');
+
+  // If mobile or browser downloads raw binary
+  if (fileId && searchParams.get('download') === 'true') {
+    const file = files.find((f) => f.id === fileId);
+    if (!file) return new Response('File not found', { status: 404 });
+    const b64 = file.dataUrl.includes('base64,') ? file.dataUrl.split('base64,')[1] : '';
+    const buffer = Buffer.from(b64, 'base64');
+    return new Response(new Uint8Array(buffer), {
+      status: 200,
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(file.name)}"`,
+        'Content-Length': buffer.length.toString(),
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  }
 
   // If mobile polls for its own upload progress ack
   if (sessionId) {
@@ -38,6 +56,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, progress });
   }
 
+  // Complete file list with dataUrl for instant browser preview and auto-download
   return NextResponse.json({
     success: true,
     files: [...files].reverse(), // newest first
@@ -53,7 +72,7 @@ export async function POST(request: Request) {
     let size = 0;
     let type = 'application/octet-stream';
     let senderName = 'Mobile Device';
-    let senderIp = '192.168.1.105';
+    let senderIp = 'Mobile Device';
     let dataUrl = '';
     let sessionId = `sess-${Date.now()}`;
 
@@ -62,7 +81,7 @@ export async function POST(request: Request) {
       name = body.name || 'received_file';
       type = body.type || 'application/octet-stream';
       senderName = body.senderName || 'Mobile Phone';
-      senderIp = body.senderIp || '192.168.1.105';
+      senderIp = body.senderIp || 'Mobile Device';
       sessionId = body.sessionId || sessionId;
 
       if (body.dataUrl) {
@@ -79,7 +98,7 @@ export async function POST(request: Request) {
       const formData = await request.formData();
       const file = formData.get('file') as File | null;
       senderName = (formData.get('senderName') as string) || 'Mobile Phone';
-      senderIp = (formData.get('senderIp') as string) || '192.168.1.105';
+      senderIp = (formData.get('senderIp') as string) || 'Mobile Device';
       sessionId = (formData.get('sessionId') as string) || sessionId;
 
       if (!file) {
@@ -90,8 +109,11 @@ export async function POST(request: Request) {
       }
 
       const paramName = (formData.get('fileName') as string) || (formData.get('name') as string);
-      name = paramName || file.name || 'received_file';
+      name = (paramName || file.name || 'received_file').replace(/\.(jfif|jflf)$/i, '.jpg');
       type = file.type || 'application/octet-stream';
+      if (type.includes('jpeg') && !name.match(/\.(jpg|jpeg)$/i)) {
+        name = `${name.replace(/\.[^.]+$/, '')}.jpg`;
+      }
 
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
@@ -134,24 +156,32 @@ export async function POST(request: Request) {
     // Clean up old progress entries after 30s
     setTimeout(() => { delete uploadProgress[sessionId]; }, 30_000);
 
-    return NextResponse.json({
-      success: true,
-      message: 'File received successfully!',
-      sessionId,
-      file: {
-        id: newFile.id,
-        name: newFile.name,
-        size: newFile.size,
-        type: newFile.type,
-        senderName: newFile.senderName,
-        timestamp: newFile.timestamp,
-        progress: 100,
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'File received successfully!',
+        sessionId,
+        file: {
+          id: newFile.id,
+          name: newFile.name,
+          size: newFile.size,
+          type: newFile.type,
+          senderName: newFile.senderName,
+          timestamp: newFile.timestamp,
+          progress: 100,
+        },
       },
-    });
-  } catch (error) {
+      {
+        headers: {
+          'Connection': 'close',
+          'Access-Control-Allow-Origin': '*',
+        },
+      }
+    );
+  } catch (error: any) {
     console.error('File upload error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to process file upload' },
+      { success: false, error: error?.message || 'Failed to process file upload', stack: error?.stack },
       { status: 500 }
     );
   }

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getRealLocalIpv4 } from '@/lib/networkUtils';
 
 // In-memory session registry for local offline pairing handshakes
 interface PairingSession {
@@ -23,6 +24,17 @@ const globalForSessions = globalThis as unknown as {
 const sessions = globalForSessions.airdartSessions || new Map<string, PairingSession>();
 if (!globalForSessions.airdartSessions) {
   globalForSessions.airdartSessions = sessions;
+}
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, DELETE',
+      'Access-Control-Allow-Headers': '*',
+    },
+  });
 }
 
 // GET /api/p2p/handshake?sessionId=DART-8492&reset=true
@@ -129,6 +141,7 @@ export async function POST(request: Request) {
       message: 'Handshake completed successfully!',
       status: 'paired',
       pcName: 'Windows PC (AirDart Web)',
+      pcIp: getRealLocalIpv4().ip,
       pcPort,
       phone: session.phone,
     });

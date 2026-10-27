@@ -31,20 +31,20 @@ export default function AirDartWebApp() {
             setConnectedPeer(data.peer);
           } else {
             failedChecksRef.current += 1;
-            // Only disconnect after 6 consecutive failed checks (~12s) to prevent kicking user out during file transfers
-            if (failedChecksRef.current >= 6) {
+            // Only disconnect after 45 consecutive failed checks (~90s) to give ample time while user selects files in gallery/file manager
+            if (failedChecksRef.current >= 45) {
               setConnectedPeer(null);
             }
           }
         } else {
           failedChecksRef.current += 1;
-          if (failedChecksRef.current >= 6) {
+          if (failedChecksRef.current >= 45) {
             setConnectedPeer(null);
           }
         }
       } catch {
         failedChecksRef.current += 1;
-        if (failedChecksRef.current >= 6) {
+        if (failedChecksRef.current >= 45) {
           setConnectedPeer(null);
         }
       }
@@ -128,7 +128,6 @@ export default function AirDartWebApp() {
       <QrModal
         visible={isQrModalOpen}
         onClose={() => setIsQrModalOpen(false)}
-        sessionUrl={`http://192.168.1.8:3000/?session=DART-8492&pin=839412`}
         pairingCode="839-412"
         sessionId="DART-8492"
         onPairedSuccess={handlePairedSuccess}

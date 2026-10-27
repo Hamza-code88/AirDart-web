@@ -127,7 +127,7 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
 
   const handleDownloadFile = (file: any) => {
     const a = document.createElement('a');
-    a.href = file.dataUrl;
+    a.href = file.dataUrl || `/api/p2p/files?id=${encodeURIComponent(file.id)}&download=true`;
     a.download = file.name;
     document.body.appendChild(a);
     a.click();
@@ -158,7 +158,12 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
           const data = await res.json();
           if (data.pcIp || data.pcPort) {
             setServerInfo({
-              ip: data.pcIp || '192.168.1.8',
+              ip:
+                data.pcIp && data.pcIp !== '127.0.0.1'
+                  ? data.pcIp
+                  : typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+                  ? window.location.hostname
+                  : data.pcIp || '127.0.0.1',
               port:
                 data.pcPort ||
                 (typeof window !== 'undefined' && window.location.port
@@ -209,7 +214,7 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
   const outboxPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [serverInfo, setServerInfo] = useState<{ ip: string; port: number }>({
-    ip: '192.168.1.8',
+    ip: typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? window.location.hostname : '127.0.0.1',
     port: typeof window !== 'undefined' && window.location.port ? parseInt(window.location.port) : 3000,
   });
 
@@ -515,16 +520,49 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
           </div>
         </div>
 
-        <div className="flex flex-col items-center gap-1.5 shrink-0">
+        <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
           <button
             type="button"
+            onClick={() => fileInputRef.current?.click()}
             className="h-12 px-7 rounded-full bg-[#FF9494] hover:bg-[#ff8585] text-[#3B2A2A] font-bold text-sm flex items-center gap-2.5 shadow-md shadow-[#FF9494]/35 active:scale-[0.98] transition-all cursor-pointer"
           >
             <Upload size={18} color="#3B2A2A" strokeWidth={2.6} />
             <span>Select Files</span>
           </button>
-          <span className="text-xs text-[#7A6363]">or paste clipboard items</span>
+
+          <button
+            type="button"
+            onClick={() => airGrabInputRef.current?.click()}
+            className="h-12 px-6 rounded-full bg-[#FFE3E1] hover:bg-[#FFD1D1] text-[#3B2A2A] font-bold text-sm flex items-center gap-2 border border-[#FF9494] shadow-sm active:scale-[0.98] transition-all cursor-pointer"
+            title="AirGrab via PC Webcam using MediaPipe AI Hand Detection"
+          >
+            <Hand size={18} color="#FF6363" strokeWidth={2.4} />
+            <span>AirGrab via Webcam</span>
+          </button>
         </div>
+
+        <input
+          ref={airGrabInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) {
+              const reader = new FileReader();
+              reader.onload = () => {
+                setPreviewImage({
+                  name: f.name,
+                  size: f.size,
+                  type: f.type,
+                  dataUrl: reader.result as string,
+                });
+                setAirGrabModalOpen(true);
+              };
+              reader.readAsDataURL(f);
+            }
+          }}
+        />
       </section>
 
       {/* Nearby Devices Section */}
@@ -844,6 +882,16 @@ export const DevicesView: React.FC<DevicesViewProps> = ({ onSelectPeer, onOpenQr
           </button>
         </div>
       </section>
+
+      {/* PC AirGrab Preview Modal (Google MediaPipe 21-Skeleton Tracker) */}
+      <AirGrabPreviewModal
+        visible={airGrabModalOpen}
+        onClose={() => {
+          setAirGrabModalOpen(false);
+          setPreviewImage(null);
+        }}
+        file={previewImage}
+      />
     </div>
   );
 };

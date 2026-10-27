@@ -40,9 +40,10 @@ export const TransfersHubView: React.FC = () => {
   const prevRecCountRef = React.useRef(0);
 
   const downloadFile = (f: any) => {
-    if (!f || !f.dataUrl) return;
+    if (!f) return;
+    const downloadHref = f.dataUrl || `/api/p2p/files?id=${f.id}&download=true`;
     const a = document.createElement('a');
-    a.href = f.dataUrl;
+    a.href = downloadHref;
     a.download = f.name;
     document.body.appendChild(a);
     a.click();
@@ -91,7 +92,7 @@ export const TransfersHubView: React.FC = () => {
     };
 
     fetchTransfers();
-    const interval = setInterval(fetchTransfers, 2000);
+    const interval = setInterval(fetchTransfers, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -104,6 +105,8 @@ export const TransfersHubView: React.FC = () => {
       direction: 'sent' as const,
       type: f.type?.startsWith('image') ? 'image' : 'doc',
       dataUrl: f.dataUrl,
+      status: f.status || 'pending',
+      progress: f.status === 'accepted' ? 100 : (f.mobileProgress ?? 0),
     })),
     ...receivedFiles.map((f) => ({
       id: f.id,
@@ -113,6 +116,8 @@ export const TransfersHubView: React.FC = () => {
       direction: 'received' as const,
       type: f.type?.startsWith('image') ? 'image' : 'doc',
       dataUrl: f.dataUrl,
+      status: 'completed',
+      progress: f.progress ?? 100,
     })),
   ];
 
@@ -229,14 +234,31 @@ export const TransfersHubView: React.FC = () => {
                     </a>
                   )}
 
-                  <span className="text-xs font-extrabold text-[#10B981] px-2.5 py-1 rounded-full bg-[#FFFFFF] border border-[#10B981]/30">
-                    Complete
+                  <span
+                    className={`text-xs font-extrabold px-2.5 py-1 rounded-full border ${
+                      item.status === 'accepted' || item.progress === 100
+                        ? 'text-[#10B981] bg-[#FFFFFF] border-[#10B981]/30'
+                        : item.status === 'declined' || item.status === 'error'
+                        ? 'text-[#EF4444] bg-[#FEE2E2] border-[#EF4444]/30'
+                        : 'text-[#994345] bg-[#FFE3E1] border-[#FFD1D1]'
+                    }`}
+                  >
+                    {item.status === 'accepted' || item.progress === 100
+                      ? 'Complete'
+                      : item.status === 'declined'
+                      ? 'Declined'
+                      : `${item.progress}% Transferring...`}
                   </span>
                 </div>
               </div>
 
-              <div className="w-full h-1.5 rounded-full bg-[#FFFFFF] overflow-hidden">
-                <div className="h-full rounded-full bg-[#10B981] w-full"></div>
+              <div className="w-full h-2 rounded-full bg-[#FFFFFF] overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    item.status === 'accepted' || item.progress === 100 ? 'bg-[#10B981]' : 'bg-[#994345]'
+                  }`}
+                  style={{ width: `${Math.max(5, item.progress)}%` }}
+                ></div>
               </div>
             </div>
           ))

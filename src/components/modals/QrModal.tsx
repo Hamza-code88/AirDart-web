@@ -40,20 +40,34 @@ export const QrModal: React.FC<QrModalProps> = ({
 
   // Auto-detect PC real local Wi-Fi IP from API
   useEffect(() => {
-    fetch('/api/p2p/network')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.primaryIp && data.primaryIp !== '127.0.0.1') {
-          setLocalIp(data.primaryIp);
-        } else if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-          setLocalIp(window.location.hostname);
+    const detectIp = async () => {
+      try {
+        const netRes = await fetch('/api/p2p/network');
+        if (netRes.ok) {
+          const data = await netRes.json();
+          if (data.primaryIp && data.primaryIp !== '127.0.0.1') {
+            setLocalIp(data.primaryIp);
+            return;
+          }
         }
-      })
-      .catch(() => {
-        if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-          setLocalIp(window.location.hostname);
+      } catch {}
+
+      try {
+        const hbRes = await fetch('/api/p2p/heartbeat');
+        if (hbRes.ok) {
+          const hbData = await hbRes.json();
+          if (hbData.pcIp && hbData.pcIp !== '127.0.0.1') {
+            setLocalIp(hbData.pcIp);
+            return;
+          }
         }
-      });
+      } catch {}
+
+      if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        setLocalIp(window.location.hostname);
+      }
+    };
+    detectIp();
   }, []);
 
   const cleanPin = pairingCode.replace(/\D/g, '');
@@ -153,22 +167,37 @@ export const QrModal: React.FC<QrModalProps> = ({
         ) : (
           /* Waiting / Scanning State */
           <div className="bg-[#FFE3E1]/60 rounded-2xl p-6 flex flex-col items-center justify-center gap-3 border border-[#FFD1D1]/60">
-            <div className="p-3 bg-[#FFFFFF] rounded-2xl shadow-sm border border-[#FFD1D1]/60 relative flex items-center justify-center">
-              <QrCodeView value={qrPayload} size={190} />
+            <div className="p-3 bg-[#FFFFFF] rounded-2xl shadow-sm border border-[#FFD1D1]/60 relative flex items-center justify-center min-w-[214px] min-h-[214px]">
+              {localIp === '127.0.0.1' ? (
+                <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
+                  <div className="w-8 h-8 border-3 border-[#FF6363] border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs font-semibold text-[#7A6363]">Detecting Wi-Fi IP...</span>
+                </div>
+              ) : (
+                <QrCodeView value={qrPayload} size={190} />
+              )}
+            </div>
+
+            {/* PC IP Badge for PIN pairing */}
+            <div className="w-full bg-[#FFFFFF] rounded-xl py-2 px-3 flex items-center justify-between border border-[#FFD1D1]/60 text-xs">
+              <span className="text-[#7A6363] font-semibold">PC Wi-Fi IP:</span>
+              <span className="font-mono font-bold text-[#3B2A2A] bg-[#FFE3E1] px-2 py-0.5 rounded-lg select-all">
+                {localIp}:{currentPort}
+              </span>
             </div>
 
             <div className="text-center mt-1">
               <span className="text-[11px] text-[#7A6363] font-bold tracking-wider">
                 OR ENTER 6-DIGIT PAIRING PIN
               </span>
-              <p className="text-xl font-extrabold text-[#3B2A2A] tracking-widest mt-0.5">
+              <p className="text-2xl font-extrabold text-[#3B2A2A] tracking-widest mt-0.5 font-mono">
                 {pairingCode}
               </p>
             </div>
 
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#FFFFFF] shadow-sm text-xs font-semibold text-[#3B2A2A]">
-              <span className="w-2 h-2 rounded-full bg-[#FF9494] animate-ping"></span>
-              <span>Point mobile camera to scan</span>
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+              <span>Point mobile camera at QR code</span>
             </div>
           </div>
         )}

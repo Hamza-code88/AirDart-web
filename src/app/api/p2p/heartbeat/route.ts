@@ -22,23 +22,10 @@ if (globalForHeartbeat.airdartActiveClient === undefined) {
   globalForHeartbeat.airdartActiveClient = activeClient;
 }
 
-import os from 'os';
+import { getRealLocalIpv4 } from '@/lib/networkUtils';
 
 function getLocalIp(): string {
-  try {
-    const interfaces = os.networkInterfaces();
-    for (const [, addrs] of Object.entries(interfaces)) {
-      if (!addrs) continue;
-      for (const addr of addrs) {
-        if (addr.family === 'IPv4' && !addr.internal) {
-          if (addr.address.startsWith('192.168.') || addr.address.startsWith('10.') || addr.address.startsWith('172.')) {
-            return addr.address;
-          }
-        }
-      }
-    }
-  } catch {}
-  return '192.168.1.7';
+  return getRealLocalIpv4().ip;
 }
 
 function getPortFromRequest(request: Request): number {
@@ -65,8 +52,8 @@ export function touchHeartbeat(ip?: string, name?: string) {
 // GET /api/p2p/heartbeat - Used by PC Web UI to check if mobile phone is currently active
 export async function GET(request: Request) {
   const current = globalForHeartbeat.airdartActiveClient;
-  // If phone hasn't pinged within 30 seconds, mark as offline/disconnected (tolerant during large transfers)
-  const isAlive = current && (Date.now() - current.lastSeen < 30000);
+  // If phone hasn't pinged within 3 minutes (180s), mark as offline (tolerant while user browses gallery/files)
+  const isAlive = current && (Date.now() - current.lastSeen < 180000);
   const realIp = getLocalIp();
   const pcPort = getPortFromRequest(request);
 
@@ -86,8 +73,9 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const phoneName = body.name || body.phoneName || 'AirDart Mobile Phone';
-    const model = body.model || 'Android / iOS';
-    const ip = body.ip || body.phoneIp || '192.168.1.105';
+    const model = body.model || body.deviceModel || 'Mobile Device';
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || '';
+    const ip = body.ip || body.phoneIp || clientIp || 'Phone (Wi-Fi)';
     const pcPort = getPortFromRequest(request);
 
     const client: ConnectedPeer = {

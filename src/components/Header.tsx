@@ -24,13 +24,17 @@ export const Header: React.FC<HeaderProps> = ({
   connectedPeer,
   onDisconnect,
 }) => {
-  const [pcIp, setPcIp] = useState('192.168.1.8');
+  const [pcIp, setPcIp] = useState('Detecting Wi-Fi...');
 
   useEffect(() => {
-    fetch('/api/p2p/heartbeat')
+    fetch('/api/p2p/network')
       .then((r) => r.json())
       .then((d) => {
-        if (d.pcIp) setPcIp(d.pcIp);
+        if (d.primaryIp && d.primaryIp !== '127.0.0.1') {
+          setPcIp(d.primaryIp);
+        } else if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+          setPcIp(window.location.hostname);
+        }
       })
       .catch(() => {});
   }, []);

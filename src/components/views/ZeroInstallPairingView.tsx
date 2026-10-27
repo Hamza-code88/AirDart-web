@@ -31,25 +31,40 @@ export const ZeroInstallPairingView: React.FC = () => {
 
   const sessionId = 'DART-8492';
 
+  const currentPort = typeof window !== 'undefined' && window.location.port ? window.location.port : '3000';
+
   // Auto-detect PC real local Wi-Fi IP
   useEffect(() => {
-    fetch('/api/p2p/network')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.primaryIp && data.primaryIp !== '127.0.0.1') {
-          setLocalIp(data.primaryIp);
-        } else if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-          setLocalIp(window.location.hostname);
+    const detectIp = async () => {
+      try {
+        const netRes = await fetch('/api/p2p/network');
+        if (netRes.ok) {
+          const data = await netRes.json();
+          if (data.primaryIp && data.primaryIp !== '127.0.0.1') {
+            setLocalIp(data.primaryIp);
+            return;
+          }
         }
-      })
-      .catch(() => {
-        if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-          setLocalIp(window.location.hostname);
+      } catch {}
+
+      try {
+        const hbRes = await fetch('/api/p2p/heartbeat');
+        if (hbRes.ok) {
+          const hbData = await hbRes.json();
+          if (hbData.pcIp && hbData.pcIp !== '127.0.0.1') {
+            setLocalIp(hbData.pcIp);
+            return;
+          }
         }
-      });
+      } catch {}
+
+      if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        setLocalIp(window.location.hostname);
+      }
+    };
+    detectIp();
   }, []);
 
-  const currentPort = typeof window !== 'undefined' && window.location.port ? window.location.port : '3000';
   const qrPayload = `http://${localIp}:${currentPort}/?session=${sessionId}&pin=839412`;
 
   // Poll local handshake endpoint
@@ -72,7 +87,7 @@ export const ZeroInstallPairingView: React.FC = () => {
   }, [pairedDevice, sessionId]);
 
   const handleCopyLink = () => {
-    navigator.clipboard?.writeText('http://192.168.1.100:3000/#pair');
+    navigator.clipboard?.writeText(qrPayload);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -131,12 +146,27 @@ export const ZeroInstallPairingView: React.FC = () => {
             </div>
           ) : (
             <div className="bg-[#FFE3E1]/50 rounded-2xl p-6 flex flex-col items-center justify-center gap-4 border border-[#FFD1D1]/60">
-              <div className="p-3 bg-[#FFFFFF] rounded-2xl shadow-sm border border-[#FFD1D1]/60 flex items-center justify-center">
-                <QrCodeView value={qrPayload} size={180} />
+              <div className="p-3 bg-[#FFFFFF] rounded-2xl shadow-sm border border-[#FFD1D1]/60 flex items-center justify-center min-w-[204px] min-h-[204px]">
+                {localIp === '127.0.0.1' ? (
+                  <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
+                    <div className="w-8 h-8 border-3 border-[#FF6363] border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs font-semibold text-[#7A6363]">Detecting Wi-Fi IP...</span>
+                  </div>
+                ) : (
+                  <QrCodeView value={qrPayload} size={180} />
+                )}
+              </div>
+
+              {/* PC IP Badge */}
+              <div className="w-full bg-[#FFFFFF] rounded-xl py-2 px-3 flex items-center justify-between border border-[#FFD1D1]/60 text-xs">
+                <span className="text-[#7A6363] font-semibold">PC Wi-Fi IP:</span>
+                <span className="font-mono font-bold text-[#3B2A2A] bg-[#FFE3E1] px-2 py-0.5 rounded-lg select-all">
+                  {localIp}:{currentPort}
+                </span>
               </div>
 
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#FFFFFF] shadow-sm text-xs font-semibold text-[#3B2A2A]">
-                <span className="w-2 h-2 rounded-full bg-[#FF9494] animate-ping"></span>
+                <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
                 <span>Waiting for phone scan...</span>
               </div>
             </div>
@@ -146,7 +176,7 @@ export const ZeroInstallPairingView: React.FC = () => {
           <div className="flex items-center justify-between bg-[#FFE3E1] rounded-2xl p-2 pl-3.5 border border-[#FFD1D1]/60">
             <div className="flex items-center gap-2 min-w-0 pr-2">
               <span className="text-xs font-mono text-[#3B2A2A] truncate">
-                https://airdart.local/#session-8842
+                {qrPayload}
               </span>
               <span className="px-2 py-0.5 rounded-full bg-[#FFFFFF] text-[10px] font-bold text-[#7A6363] shrink-0">
                 Local Wi-Fi Only

@@ -12,7 +12,7 @@ export interface OutboxFile {
   base64?: string;
   senderName: string;
   targetDevice: string;
-  status: 'pending' | 'accepted' | 'declined';
+  status: 'pending' | 'downloading' | 'accepted' | 'declined';
   mobileProgress?: number;   // 0-100: real upload progress from mobile side
   pcProgress?: number;       // 0-100: read progress on PC side
   timestamp: number;
@@ -60,12 +60,14 @@ export async function GET(request: Request) {
       return new Response('File not found', { status: 404 });
     }
     const b64 = file.base64 || (file.dataUrl.includes('base64,') ? file.dataUrl.split('base64,')[1] : '');
+    const buffer = Buffer.from(b64, 'base64');
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {
         'Content-Type': file.type || 'application/octet-stream',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(file.name)}"`,
         'Content-Length': buffer.length.toString(),
+        'Access-Control-Allow-Origin': '*',
       },
     });
   }
@@ -84,8 +86,8 @@ export async function GET(request: Request) {
       mobileProgress: f.mobileProgress ?? 0,
       pcProgress: f.pcProgress ?? 0,
       timestamp: f.timestamp,
-      // Inline data only for small files (< 150KB) so large files don't bloat polling
-      dataUrl: f.size < 150 * 1024 ? f.dataUrl : undefined,
+      dataUrl: f.dataUrl,
+      base64: f.base64,
     }));
 
   return NextResponse.json({
