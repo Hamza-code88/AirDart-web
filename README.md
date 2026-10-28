@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AirDart-web — Zero-Install Web & Desktop Client for AirDart
 
-## Getting Started
+AirDart-web is the PC side of AirDart. Open it in a browser or as a desktop app and transfer unlimited files — and sync clipboards — with your phone over your local LAN, with zero cloud bandwidth.
 
-First, run the development server:
+> Status: **In active development.** Companion app: [Hamza-code88/AirDart-App](https://github.com/Hamza-code88/AirDart-App) (React Native mobile client).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## What it does
+
+- **PC ↔ phone file transfer** over LAN — no internet, no cloud, no cable
+- **Zero-install web client** — open it in the browser, no signup
+- **Clipboard sync** with the phone (via the clipboard daemon)
+- **Desktop app** via Electron
+
+## How it works
+
+```
+PC (Next.js + Electron)  ⇄  LAN (HTTP, port 3000)  ⇄  Phone (AirDart-App)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- The web client serves the local API the phone talks to, including `/api/p2p/heartbeat` and `/api/p2p/outbox`.
+- Phone and PC must be on the **same Wi-Fi network**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tech stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Next.js 16, React 19, TypeScript
+- Tailwind CSS 4
+- Electron (desktop build)
+- Node clipboard daemon (`scripts/clipboard-daemon.js`)
 
-## Learn More
+## Getting started
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Open http://localhost:3000 — the dev server listens on `0.0.0.0` so other devices on your LAN can reach it.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Desktop app:
 
-## Deploy on Vercel
+```bash
+npm run desktop
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Clipboard daemon:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run sync:clipboard
+```
+
+## Screenshots / Demo
+
+<!-- Add 4–5 screenshots here, plus a 30-second screen recording of a phone → PC transfer -->
+
+## Project structure
+
+```
+app/                     # Next.js app (pages + /api/p2p routes)
+electron/                # Desktop shell (main.js)
+scripts/                 # Clipboard daemon
+```
+
+## Roadmap
+
+- [ ] Transfer progress + resume after a dropped connection
+- [ ] Full LAN discovery (no manual IP entry)
+- [ ] Packaged desktop release
+
+## Author
+
+Hamza Khan — Full-Stack Developer (Next.js, React Native, Supabase)
+Portfolio: https://www.hamzacode88.com/ · GitHub: https://github.com/Hamza-code88
